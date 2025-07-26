@@ -4,6 +4,8 @@
    import { auth } from '../firebase';
    import { createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile, sendPasswordResetEmail, fetchSignInMethodsForEmail } from "firebase/auth";
    import { googleLogin } from '../firebaseAuth'; // Import googleLogin
+   import { loginToBackend } from '../utils/api';
+
 
    const LoginPage = ({ onLoginSuccess, onSignupSuccess }) => {
        const [email, setEmail] = useState("");
@@ -85,13 +87,27 @@
        };
 
        const handleEmailPasswordLogin = async () => {
-           try {
-               const result = await signInWithEmailAndPassword(auth, email, password);
-               onLoginSuccess(result.user);
-           } catch (err) {
-               setError(err.message);
-           }
-       };
+  try {
+    const result = await signInWithEmailAndPassword(auth, email, password);
+    const user = result.user;
+
+    // 🔐 Optional: Get Firebase ID token
+    const token = await user.getIdToken();
+
+    // 🧠 Call your backend
+    const res = await loginToBackend({
+      email: user.email,
+      uid: user.uid,
+      token: token, // optional
+    });
+
+    console.log("Backend response:", res);
+    onLoginSuccess(user); // Your existing logic
+  } catch (err) {
+    setError(err.message);
+  }
+};
+
 
        const handleSignup = async () => {
            try {

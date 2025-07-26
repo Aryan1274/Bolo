@@ -5,6 +5,8 @@ const cors = require("cors");
 const { Server } = require("socket.io");
 const mongoose = require("mongoose");
 const { v4: uuidv4 } = require('uuid');
+const authRoutes = require("./routes/auth"); // ✅ ADD THIS
+
 
 require("dotenv").config();
 
@@ -31,6 +33,8 @@ const server = http.createServer(app);
 // === Middleware
 app.use(cors());
 app.use(express.json());
+app.use("/api", authRoutes); // ✅ ADD THIS
+
 
 // === Multer: memory storage for Cloudinary streaming
 const upload = multer({ storage: multer.memoryStorage() });
