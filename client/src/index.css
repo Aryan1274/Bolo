@@ -1,0 +1,15 @@
+/* index.css — All styles are in App.css. This file is intentionally minimal. */
+
+/* Prevent FOUC — base body background before App.css loads */
+html, body {
+  margin: 0;
+  padding: 0;
+  background: #111318;
+  min-height: 100vh;
+}
+
+#root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
