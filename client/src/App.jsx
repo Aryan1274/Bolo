@@ -3,12 +3,14 @@ import { onAuthStateChanged, signOut } from "firebase/auth";
 import { auth } from "./firebase";
 import socket from "./socket";
 import toast, { Toaster } from "react-hot-toast";
+import Peer from "simple-peer";
 
 import { Routes, Route } from "react-router-dom";
 import LoginPage from "./components/LoginPage";
 import OnlineUsers from "./components/OnlineUsers";
 import ChatArea from "./components/ChatArea";
 import ProfilePage from "./components/ProfilePage";
+import CallOverlay from "./components/CallOverlay";
 
 import "./App.css";
 
@@ -29,6 +31,16 @@ function App() {
   const [hasMore, setHasMore] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
 
+  // WebRTC States
+  const [stream, setStream] = useState(null);
+  const [receivingCall, setReceivingCall] = useState(false);
+  const [caller, setCaller] = useState("");
+  const [callerSignal, setCallerSignal] = useState(null);
+  const [callAccepted, setCallAccepted] = useState(false);
+  const [callEnded, setCallEnded] = useState(false);
+  const [remoteStream, setRemoteStream] = useState(null);
+
+  const connectionRef = useRef();
   const messageInputRef = useRef(null);
   const emojiPickerRef = useRef(null);
   const chatListenerRef = useRef(null);
@@ -179,6 +191,12 @@ function App() {
       }
     });
 
+    socket.on("incoming_call", ({ from, name, signal }) => {
+      setReceivingCall(true);
+      setCaller(from);
+      setCallerSignal(signal);
+    });
+
     return () => {
       socket.off("online_users");
       socket.off("typing");
@@ -188,8 +206,91 @@ function App() {
       socket.off("message_edited");
       socket.off("message_deleted");
       socket.off("friend_update");
+      socket.off("incoming_call");
     };
   }, [currentUsername]);
+
+  // ── WebRTC Calling Functions ─────────────────────────────────────────────
+  const callUser = async (idOfTarget) => {
+    try {
+      const myStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      setStream(myStream);
+
+      const peer = new Peer({
+        initiator: true,
+        trickle: false,
+        stream: myStream,
+      });
+
+      peer.on("signal", (data) => {
+        socket.emit("call_user", {
+          userToCall: idOfTarget,
+          signalData: data,
+          from: authUser.uid,
+          name: currentUsername,
+        });
+      });
+
+      peer.on("stream", (remStream) => {
+        setRemoteStream(remStream);
+      });
+
+      socket.on("call_accepted", (signal) => {
+        setCallAccepted(true);
+        peer.signal(signal);
+      });
+
+      connectionRef.current = peer;
+    } catch (err) {
+      console.error("Camera/Mic access denied:", err);
+      toast.error("Please allow camera/microphone access to call.");
+    }
+  };
+
+  const answerCall = async () => {
+    try {
+      setCallAccepted(true);
+      const myStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      setStream(myStream);
+
+      const peer = new Peer({
+        initiator: false,
+        trickle: false,
+        stream: myStream,
+      });
+
+      peer.on("signal", (data) => {
+        socket.emit("answer_call", { signal: data, to: caller });
+      });
+
+      peer.on("stream", (remStream) => {
+        setRemoteStream(remStream);
+      });
+
+      if (callerSignal) peer.signal(callerSignal);
+      connectionRef.current = peer;
+    } catch (err) {
+      console.error("Camera/Mic access denied:", err);
+      toast.error("Camera/Mic access is required to answer.");
+      leaveCall();
+    }
+  };
+
+  const leaveCall = () => {
+    setCallEnded(true);
+    if (connectionRef.current) connectionRef.current.destroy();
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+    }
+    setStream(null);
+    setReceivingCall(false);
+    setCaller("");
+    setCallerSignal(null);
+    setCallAccepted(false);
+    setCallEnded(false);
+    setRemoteStream(null);
+    socket.off("call_accepted");
+  };
 
   // ── Unread counts (fetch from REST API) ─────────
   useEffect(() => {
@@ -508,6 +609,7 @@ function App() {
                 hasMore={hasMore}
                 isLoadingMore={isLoadingMore}
                 loadOlderMessages={loadOlderMessages}
+                onCall={callUser}
               />
             </div>
           }
@@ -522,6 +624,20 @@ function App() {
           }
         />
       </Routes>
+
+      {/* Global Call Overlay */}
+      {(receivingCall || (stream && !callEnded)) && (
+        <CallOverlay 
+          stream={stream}
+          remoteStream={remoteStream}
+          onHangUp={leaveCall}
+          isReceivingCall={receivingCall}
+          callerName={caller} // Should ideally map UID to DisplayName
+          onAnswer={answerCall}
+          callAccepted={callAccepted}
+          callEnded={callEnded}
+        />
+      )}
     </div>
   );
 }

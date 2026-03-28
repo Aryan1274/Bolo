@@ -437,6 +437,54 @@ app.put("/api/messages/:id", async (req, res) => {
   }
 });
 
+// Search messages
+app.get("/api/messages/search", async (req, res) => {
+  try {
+    const { from, to, type, q } = req.query;
+    if (!q) return res.json([]);
+
+    const filter = { $text: { $search: q } };
+    if (type === "group") {
+      filter.to = to;
+    } else {
+      filter.$or = [
+        { from, to },
+        { from: to, to: from },
+      ];
+    }
+    
+    const results = await Message.find(filter).sort({ timestamp: -1 }).limit(50);
+    res.json(results);
+  } catch (error) {
+    res.status(500).json({ error: "Search failed" });
+  }
+});
+
+// Fetch all media (images/video/audio) for a chat
+app.get("/api/messages/media", async (req, res) => {
+  try {
+    const { from, to, type } = req.query;
+    const filter = { 
+      imageUrl: { $exists: true, $ne: null },
+      message: { $ne: "[deleted]" }
+    };
+    
+    if (type === "group") {
+      filter.to = to;
+    } else {
+      filter.$or = [
+        { from, to },
+        { from: to, to: from },
+      ];
+    }
+
+    const media = await Message.find(filter).sort({ timestamp: -1 });
+    res.json(media);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch media" });
+  }
+});
+
 // Soft-delete a message
 app.put("/api/messages/:id/delete", async (req, res) => {
   try {
@@ -593,7 +641,6 @@ io.on("connection", (socket) => {
     }
   });
 
-  // === Read Receipt ===
   socket.on("message_seen", async ({ from, to }) => {
     try {
       // Mark all unread messages from 'from' to 'to' as seen in MongoDB
@@ -609,6 +656,21 @@ io.on("connection", (socket) => {
       }
     } catch (err) {
       console.error("Failed to update seen status:", err);
+    }
+  });
+
+  // ── WebRTC Calling Signaling ─────────────────────────────────────────────
+  socket.on("call_user", ({ userToCall, signalData, from, name }) => {
+    const targetSocketId = getSocketByUid(userToCall);
+    if (targetSocketId) {
+      io.to(targetSocketId).emit("incoming_call", { signal: signalData, from, name });
+    }
+  });
+
+  socket.on("answer_call", ({ to, signal }) => {
+    const targetSocketId = getSocketByUid(to);
+    if (targetSocketId) {
+      io.to(targetSocketId).emit("call_accepted", signal);
     }
   });
 

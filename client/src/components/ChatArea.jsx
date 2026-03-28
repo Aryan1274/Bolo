@@ -3,6 +3,7 @@ import ChatMessage from "./ChatMessage";
 import EmojiPicker from "./EmojiPicker";
 import VoiceRecorder from "./VoiceRecorder";
 import GiphyPicker from "./GiphyPicker";
+import MediaGallery from "./MediaGallery";
 import socket from "../socket";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
@@ -34,6 +35,7 @@ export default function ChatArea({
   hasMore,
   isLoadingMore,
   loadOlderMessages,
+  onCall,
 }) {
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
@@ -44,6 +46,10 @@ export default function ChatArea({
   const [uploadError, setUploadError] = useState("");
   const [replyingTo, setReplyingTo] = useState(null);
   const [showGiphy, setShowGiphy] = useState(false);
+  const [showGallery, setShowGallery] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState([]);
   const prevScrollHeightRef = useRef(0);
 
   // Auto-scroll to latest message (only on new messages, not when loading older)
@@ -117,12 +123,23 @@ export default function ChatArea({
     }
   }, [hasMore, isLoadingMore, loadOlderMessages]);
 
-  const showBrowserNotification = (sender, text) => {
+  const showBrowserNotification = (sender, text, isGroup) => {
     if ("Notification" in window && Notification.permission === "granted") {
-      new Notification(`New message from ${sender}`, {
-        body: text || "📎 File",
-        icon: "/favicon.ico",
+      const title = isGroup ? `New message in group` : `New message from ${sender}`;
+      const body = text || "📎 File attachment";
+      const icon = "/vite.svg"; // Fallback to app icon
+      
+      const notification = new Notification(title, {
+        body: `${isGroup ? sender + ": " : ""}${body}`,
+        icon,
+        tag: sender, // Combines multiple messages from same sender
+        renotify: true
       });
+
+      notification.onclick = () => {
+        window.focus();
+        notification.close();
+      };
     }
   };
 
@@ -238,33 +255,93 @@ export default function ChatArea({
     setReplyingTo(null);
     setShowGiphy(false);
   };
+
+  const handleSearch = async (e) => {
+    e.preventDefault();
+    if (!searchQuery.trim()) return;
+    try {
+      const type = selectedGroup ? "group" : "private";
+      const to = selectedGroup ? selectedGroup._id : selectedUser;
+      const res = await fetch(`${API_URL}/api/messages/search?from=${username}&to=${to}&type=${type}&q=${encodeURIComponent(searchQuery)}`);
+      const data = await res.json();
+      setSearchResults(data || []);
+    } catch (err) {
+      console.error("Search error:", err);
+    }
+  };
+
+  const closeSearch = () => {
+    setIsSearching(false);
+    setSearchQuery("");
+    setSearchResults([]);
+  };
   return (
     <div className="chat-area">
       {/* Header */}
       <div className="chat-header">
-        <h3>{selectedGroup ? `Group: ${selectedGroup.name}` : selectedUser ? `Chat with ${selectedUser}` : "Bolo Chat"}</h3>
-        {selectedUserDetails && (
-          <div className="online-status">
-            {selectedUserDetails.isOnline ? (
-              <>
-                <span className={`dot ${
-                  selectedUserDetails.customStatus === "Away" ? "away" : 
-                  selectedUserDetails.customStatus === "Do Not Disturb" ? "busy" : "online"
-                }`}>●</span>{" "}
-                {selectedUserDetails.customStatus || "Online"}
-              </>
-            ) : (
-              <>
-                <span className="dot offline">●</span> Last seen:{" "}
-                {selectedUserDetails.lastSeen
-                  ? new Intl.DateTimeFormat(undefined, {
-                      month: "short",
-                      day: "numeric",
-                      hour: "numeric",
-                      minute: "numeric",
-                    }).format(new Date(selectedUserDetails.lastSeen))
-                  : "recently"}
-              </>
+        <div className="header-info">
+          <h3>{selectedGroup ? `Group: ${selectedGroup.name}` : selectedUser ? `Chat with ${selectedUser}` : "Bolo Chat"}</h3>
+          {selectedUserDetails && (
+            <div className="online-status">
+              {selectedUserDetails.isOnline ? (
+                <>
+                  <span className={`dot ${
+                    selectedUserDetails.customStatus === "Away" ? "away" : 
+                    selectedUserDetails.customStatus === "Do Not Disturb" ? "busy" : "online"
+                  }`}>●</span>{" "}
+                  {selectedUserDetails.customStatus || "Online"}
+                </>
+              ) : (
+                <>
+                  <span className="dot offline">●</span> Last seen:{" "}
+                  {selectedUserDetails.lastSeen
+                    ? new Intl.DateTimeFormat(undefined, {
+                        month: "short",
+                        day: "numeric",
+                        hour: "numeric",
+                        minute: "numeric",
+                      }).format(new Date(selectedUserDetails.lastSeen))
+                    : "recently"}
+                </>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="header-actions">
+          {!selectedGroup && selectedUserDetails?.uid && (
+            <button className="icon-btn" onClick={() => onCall(selectedUserDetails.uid)} title="Video Call">📞</button>
+          )}
+          <button className="icon-btn" onClick={() => setIsSearching(true)} title="Search Messages">🔍</button>
+          <button className="icon-btn" onClick={() => setShowGallery(!showGallery)} title="Media Gallery">📁</button>
+        </div>
+
+        {isSearching && (
+          <div className="search-overlay">
+            <div className="search-bar-inner">
+              <form onSubmit={handleSearch}>
+                <input 
+                  type="text" 
+                  placeholder="Search conversation..." 
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  autoFocus
+                />
+              </form>
+              <button className="close-search" onClick={closeSearch}>✕</button>
+            </div>
+            {searchResults.length > 0 && (
+              <div className="search-results-popup">
+                {searchResults.map(msg => (
+                  <div key={msg._id} className="search-result-item" onClick={() => {
+                    // Logic to scroll to message could go here
+                    closeSearch();
+                  }}>
+                    <span className="result-sender">{msg.from}:</span>
+                    <span className="result-text">{msg.message}</span>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         )}
@@ -344,6 +421,16 @@ export default function ChatArea({
           <p>⚠️ You are not friends with <strong>{selectedUser}</strong> yet.</p>
           <small>Add them from the sidebar to start chatting!</small>
         </div>
+      )}
+
+      {/* Media Gallery Sidebar */}
+      {showGallery && (
+        <MediaGallery 
+          from={username}
+          to={selectedGroup ? selectedGroup._id : selectedUser}
+          type={selectedGroup ? "group" : "private"}
+          onClose={() => setShowGallery(false)}
+        />
       )}
 
       {/* File Preview */}

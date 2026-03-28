@@ -25,5 +25,6 @@ const messageSchema = new mongoose.Schema(
 // Compound indexes
 messageSchema.index({ from: 1, to: 1, timestamp: 1 });
 messageSchema.index({ to: 1, timestamp: 1 }); // index for group messages by groupId (to)
+messageSchema.index({ message: "text" }); // text index for search
 
 module.exports = mongoose.model("Message", messageSchema);
