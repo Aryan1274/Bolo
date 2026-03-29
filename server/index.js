@@ -37,15 +37,8 @@ const server = http.createServer(app);
 
 // === Middleware ===
 app.use(cors({
-  origin: (origin, callback) => {
-    // Allow requests with no origin (e.g. curl, mobile apps) or from allowed list
-    if (!origin || ALLOWED_ORIGINS.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error(`CORS blocked: origin ${origin} not allowed`));
-    }
-  },
-  methods: ["GET", "POST"],
+  origin: "*",
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
 }));
 app.use(express.json());
 
@@ -545,7 +538,7 @@ app.put("/api/messages/:id/react", async (req, res) => {
 // === Socket.IO ===
 const io = new Server(server, {
   cors: {
-    origin: ALLOWED_ORIGINS,
+    origin: "*",
     methods: ["GET", "POST"],
   },
 });

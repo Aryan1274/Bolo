@@ -36,6 +36,7 @@ export default function ChatArea({
   isLoadingMore,
   loadOlderMessages,
   onCall,
+  onBack,
 }) {
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
@@ -280,6 +281,9 @@ export default function ChatArea({
       {/* Header */}
       <div className="chat-header">
         <div className="header-info">
+          {(selectedUser || selectedGroup) && (
+            <button className="mobile-back-btn" onClick={onBack} title="Back to chats">←</button>
+          )}
           <h3>{selectedGroup ? `Group: ${selectedGroup.name}` : selectedUser ? `Chat with ${selectedUser}` : "Bolo Chat"}</h3>
           {selectedUserDetails && (
             <div className="online-status">

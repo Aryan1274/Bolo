@@ -567,7 +567,7 @@ function App() {
         <Route
           path="/"
           element={
-            <div className="chat-layout">
+            <div className={`chat-layout ${(selectedUser || selectedGroup) ? "chat-active" : ""}`}>
               <OnlineUsers
                 onlineUsers={onlineUsers}
                 allUsers={allUsers}
@@ -610,6 +610,7 @@ function App() {
                 isLoadingMore={isLoadingMore}
                 loadOlderMessages={loadOlderMessages}
                 onCall={callUser}
+                onBack={() => { setSelectedUser(null); setSelectedGroup(null); }}
               />
             </div>
           }

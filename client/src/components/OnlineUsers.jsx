@@ -18,8 +18,7 @@ export default function OnlineUsers({
   groups,
   fetchAllGroups,
 }) {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState("friends");
+  const [activeTab, setActiveTab] = useState("all");
 
   const totalUnread = Object.values(unreadCounts).reduce((sum, c) => sum + c, 0);
   const myDbUser = allUsers.find(u => u.uid === authUser?.uid);
@@ -27,12 +26,9 @@ export default function OnlineUsers({
   const friendsIds = myDbUser?.friends || [];
   const requestIds = myDbUser?.friendRequests || [];
 
-  // Group Users
   const friendsList = allUsers.filter(u => friendsIds.includes(u.uid));
   const requestsList = allUsers.filter(u => requestIds.includes(u.uid));
-  const findList = allUsers.filter(
-    u => u.uid !== authUser?.uid && !friendsIds.includes(u.uid)
-  );
+  const findList = allUsers.filter(u => u.uid !== authUser?.uid && !friendsIds.includes(u.uid));
 
   const handleSendRequest = async (targetUid) => {
     try {
@@ -82,195 +78,152 @@ export default function OnlineUsers({
     }
   };
 
-  const handleUnfriend = async (friendUid) => {
-    if (!window.confirm("Are you sure you want to remove this friend?")) return;
-    try {
-      const res = await fetch(`${API_URL}/api/users/${authUser.uid}/friend-remove`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ friendUid }),
-      });
-      if (res.ok) {
-        toast.success("Friend removed");
-        fetchAllUsers();
-      }
-    } catch (err) {
-      toast.error("Error removing friend");
-    }
-  };
-
-  // Helper to merge online status from socket with DB users
   const getRenderUser = (u) => {
     const isOnline = onlineUsers.some(ou => ou.username === u.displayName);
     return { ...u, isOnline };
   };
 
   return (
-    <>
-      <button
-        className="sidebar-toggle"
-        onClick={() => setSidebarOpen((v) => !v)}
-      >
-        <span className="sidebar-toggle-icon">☰</span>
-        {totalUnread > 0 && <span className="sidebar-toggle-badge">{totalUnread}</span>}
-      </button>
-
-      {sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
-
-      <div className={`online-users ${sidebarOpen ? "open" : ""}`}>
-        <div className="sidebar-tabs">
-          <button className={activeTab === "friends" ? "active" : ""} onClick={() => setActiveTab("friends")}>Friends</button>
-          <button className={activeTab === "groups" ? "active" : ""} onClick={() => setActiveTab("groups")}>Groups</button>
-          <button className={activeTab === "requests" ? "active" : ""} onClick={() => setActiveTab("requests")}>
-            Req {requestIds.length > 0 && <span className="tab-badge">{requestIds.length}</span>}
-          </button>
-          <button className={activeTab === "find" ? "active" : ""} onClick={() => setActiveTab("find")}>Find</button>
+    <div className={`online-users ${(selectedUser || selectedGroup) ? "active-chat-mode" : ""}`}>
+      {/* Sidebar Header */}
+      <div className="sidebar-header">
+        <div className="header-top">
+          <div className="search-container">
+            <span className="search-icon">🔍</span>
+            <input type="text" placeholder="Search" className="search-input" />
+          </div>
+          <Link to="/profile" className="self-avatar-link">
+             {myDbUser?.avatarUrl ? <img src={myDbUser.avatarUrl} alt="" className="self-avatar" /> : <div className="self-avatar-placeholder">{currentUsername[0]}</div>}
+          </Link>
         </div>
+        
+        <div className="sidebar-tabs">
+          <button className={`tab-link ${activeTab === "all" ? "active" : ""}`} onClick={() => setActiveTab("all")}>All</button>
+          <button className={`tab-link ${activeTab === "groups" ? "active" : ""}`} onClick={() => setActiveTab("groups")}>Groups</button>
+          <button className={`tab-link ${activeTab === "requests" ? "active" : ""}`} onClick={() => setActiveTab("requests")}>
+            Req {requestIds.length > 0 && <span className="tab-dot"></span>}
+          </button>
+          <button className={`tab-link ${activeTab === "find" ? "active" : ""}`} onClick={() => setActiveTab("find")}>Find</button>
+        </div>
+      </div>
 
-        <ul className="sidebar-user-list">
-          {activeTab === "friends" && (
-            <>
-              {friendsList.length === 0 ? (
-                <li className="no-users-msg">No friends yet. Go to Find!</li>
-              ) : (
-                friendsList.map(u => {
-                  const renderU = getRenderUser(u);
-                  return (
-                    <li
-                      key={renderU.uid}
-                      onClick={() => {
-                        onSelectItem(renderU.displayName, "private");
-                        setSidebarOpen(false);
-                      }}
-                      className={renderU.displayName === selectedUser ? "selected" : ""}
-                    >
-                      <span className="avatar-icon">{renderU.avatarUrl ? <img src={renderU.avatarUrl} alt="" className="mini-avatar" /> : renderU.displayName[0]?.toUpperCase()}</span>
-                      {renderU.isOnline && <span className="online-dot"></span>}
-                      <span className="username-text">{renderU.displayName}</span>
-                      {unreadCounts[renderU.displayName] > 0 && (
-                        <span className="unread-badge">{unreadCounts[renderU.displayName]}</span>
-                      )}
-                      
-                      <button 
-                        className="unfriend-icon" 
-                        title="Remove Friend"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleUnfriend(renderU.uid);
-                        }}
-                      >
-                        ✕
-                      </button>
-                    </li>
-                  );
-                })
-              )}
-            </>
+      {/* User List */}
+      <div className="user-list-container">
+        <ul className="user-list">
+          {activeTab === "all" && (
+            friendsList.length === 0 ? (
+              <li className="empty-msg">No conversations yet.</li>
+            ) : (
+              friendsList.map(u => {
+                const renderU = getRenderUser(u);
+                return (
+                  <li
+                    key={renderU.uid}
+                    onClick={() => onSelectItem(renderU.displayName, "private")}
+                    className={`user-item ${renderU.displayName === selectedUser ? "selected" : ""}`}
+                  >
+                    <div className="avatar-box">
+                      {renderU.avatarUrl ? <img src={renderU.avatarUrl} alt="" className="user-avatar" /> : <div className="avatar-placeholder">{renderU.displayName[0]}</div>}
+                      {renderU.isOnline && <span className="online-status-dot"></span>}
+                    </div>
+                    <div className="user-info">
+                      <div className="user-top">
+                        <span className="user-name">{renderU.displayName}</span>
+                        <span className="last-time">13:30</span>
+                      </div>
+                      <div className="user-bottom">
+                         <span className="last-msg">Tap to chat...</span>
+                         {unreadCounts[renderU.displayName] > 0 && <span className="unread-count">{unreadCounts[renderU.displayName]}</span>}
+                      </div>
+                    </div>
+                  </li>
+                );
+              })
+            )
           )}
 
           {activeTab === "groups" && (
             <>
               <button 
-                className="create-group-btn"
+                className="create-btn"
                 onClick={() => {
                   const name = window.prompt("Enter Group Name:");
                   if (name) {
                     fetch(`${API_URL}/api/groups/create`, {
                       method: "POST",
                       headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ 
-                        name, 
-                        adminUid: authUser.uid,
-                        members: [authUser.uid] 
-                      })
+                      body: JSON.stringify({ name, adminUid: authUser.uid, members: [authUser.uid] })
                     }).then(() => fetchAllGroups());
                   }
                 }}
               >
-                + Create New Group
+                + Create Group
               </button>
-              {groups.length === 0 ? (
-                <li className="no-users-msg">No groups joined.</li>
-              ) : (
-                groups.map(g => (
-                  <li
-                    key={g._id}
-                    onClick={() => {
-                      onSelectItem(g, "group");
-                      setSidebarOpen(false);
-                    }}
-                    className={selectedGroup?._id === g._id ? "selected" : ""}
-                  >
-                    <span className="avatar-icon">{g.avatarUrl ? <img src={g.avatarUrl} alt="" className="mini-avatar" /> : "👥"}</span>
-                    <span className="username-text group-name">{g.name}</span>
-                    <span className="member-count">{g.members?.length || 0}m</span>
-                  </li>
-                ))
-              )}
+              {groups.map(g => (
+                <li
+                  key={g._id}
+                  onClick={() => onSelectItem(g, "group")}
+                  className={`user-item ${selectedGroup?._id === g._id ? "selected" : ""}`}
+                >
+                  <div className="avatar-box">
+                    {g.avatarUrl ? <img src={g.avatarUrl} alt="" className="user-avatar" /> : <div className="avatar-placeholder group">👥</div>}
+                  </div>
+                  <div className="user-info">
+                    <div className="user-top">
+                      <span className="user-name">{g.name}</span>
+                      <span className="last-time">Mon</span>
+                    </div>
+                    <div className="user-bottom">
+                      <span className="last-msg">Group active</span>
+                      {unreadCounts[g.name] > 0 && <span className="unread-count">{unreadCounts[g.name]}</span>}
+                    </div>
+                  </div>
+                </li>
+              ))}
             </>
           )}
 
           {activeTab === "requests" && (
-            <>
-              {requestsList.length === 0 ? (
-                <li className="no-users-msg">No friend requests.</li>
-              ) : (
-                requestsList.map(u => (
-                  <li key={u.uid} className="request-item">
-                    <div className="request-info">
-                      <span className="avatar-icon">{u.avatarUrl ? <img src={u.avatarUrl} alt="" className="mini-avatar"/> : u.displayName[0]?.toUpperCase()}</span>
-                      <span className="username-text">{u.displayName}</span>
-                    </div>
-                    <div className="request-actions">
-                      <button className="req-btn accept" onClick={() => handleAcceptRequest(u.uid)}>✓</button>
-                      <button className="req-btn reject" onClick={() => handleRejectRequest(u.uid)}>✕</button>
-                    </div>
-                  </li>
-                ))
-              )}
-            </>
+            requestsList.map(u => (
+              <li key={u.uid} className="req-item">
+                <div className="req-avatar">
+                   {u.avatarUrl ? <img src={u.avatarUrl} alt="" className="user-avatar" /> : <div className="avatar-placeholder">{u.displayName[0]}</div>}
+                </div>
+                <div className="req-details">
+                  <span className="user-name">{u.displayName}</span>
+                  <div className="req-btns">
+                    <button className="btn-ok" onClick={() => handleAcceptRequest(u.uid)}>Accept</button>
+                    <button className="btn-no" onClick={() => handleRejectRequest(u.uid)}>Deny</button>
+                  </div>
+                </div>
+              </li>
+            ))
           )}
 
           {activeTab === "find" && (
-            <>
-              {findList.length === 0 ? (
-                <li className="no-users-msg">No more users to add.</li>
-              ) : (
-                findList.map(u => {
-                  const hasSentReq = u.friendRequests?.includes(authUser?.uid);
-                  return (
-                    <li key={u.uid} className="find-item">
-                      <div className="find-info">
-                        <span className="avatar-icon">{u.avatarUrl ? <img src={u.avatarUrl} alt="" className="mini-avatar"/> : u.displayName[0]?.toUpperCase()}</span>
-                        <span className="username-text">{u.displayName}</span>
-                      </div>
-                      <button 
-                        className="add-btn" 
-                        disabled={hasSentReq}
-                        onClick={() => handleSendRequest(u.uid)}
-                      >
-                        {hasSentReq ? "Sent" : "Add"}
-                      </button>
-                    </li>
-                  );
-                })
-              )}
-            </>
+            findList.map(u => {
+              const hasSentReq = u.friendRequests?.includes(authUser?.uid);
+              return (
+                <li key={u.uid} className="find-item">
+                  <div className="avatar-box">
+                    {u.avatarUrl ? <img src={u.avatarUrl} alt="" className="user-avatar" /> : <div className="avatar-placeholder">{u.displayName[0]}</div>}
+                  </div>
+                  <div className="find-right">
+                    <span className="user-name">{u.displayName}</span>
+                    <button className="add-btn" disabled={hasSentReq} onClick={() => handleSendRequest(u.uid)}>
+                      {hasSentReq ? "Pending" : "+ Add"}
+                    </button>
+                  </div>
+                </li>
+              );
+            })
           )}
         </ul>
-
-        <div className="sidebar-footer">
-          <Link to="/profile" className="current-user" style={{ textDecoration: 'none', color: 'inherit' }}>
-            <span className="avatar-icon">
-              {myDbUser?.avatarUrl ? <img src={myDbUser.avatarUrl} alt="" className="mini-avatar"/> : (currentUsername[0]?.toUpperCase() || "👤")}
-            </span>
-            <span>{currentUsername}</span>
-          </Link>
-          <button className="logout-btn" onClick={onLogout} title="Sign out">
-            ⎋ Logout
-          </button>
-        </div>
       </div>
-    </>
+
+      <div className="sidebar-footer-new">
+         <button className="logout-btn-new" onClick={onLogout}>Sign Out</button>
+      </div>
+    </div>
   );
 }
